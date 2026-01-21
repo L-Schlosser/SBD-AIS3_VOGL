@@ -330,6 +330,7 @@ Storage Memory: 26.9 MiB / 848.3 MiB
 
    **Conclusion:** To achieve high throughput, increase executors, cores, and memory while tuning shuffle partitions to match hardware capacity.
 
+
 # Activity 2: Tuning for High Throughput
 
 ### The Challenge
@@ -380,20 +381,41 @@ To maximize throughput while keeping micro-batch latency under 20 seconds, the S
 - Reduce shuffle overhead by tuning the number of shuffle partitions
 - Scale the load generator horizontally by running multiple instances (each producing `TARGET_RPS=10000`)
 
-#### Example Tuned Spark Configuration
-This configuration utilizes 8 CPU cores and sufficient memory, enabling high parallelism and allowing the application to process several hundred thousand events per second with micro-batch latencies below 20 seconds.
+# NEW Tuned Spark Configuration
+This configuration utilizes 25 CPU cores and sufficient memory, enabling high parallelism and allowing the application to process several hundred thousand events per second with micro-batch latencies below 20 seconds - also used 10G of Memory:
 ```bash
 spark-submit \
   --master spark://spark-master:7077 \
   --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.0 \
-  --num-executors 2 \
-  --executor-cores 8 \
-  --executor-memory 4G \
-  --conf "spark.sql.shuffle.partitions=4" \
+  --num-executors 1 \
+  --executor-cores 25 \
+  --executor-memory 10G \
   /opt/spark-apps/spark_structured_streaming_logs_processing.py
 ```
 
-I used the one from before with only 1 executer and 1 core
+Change in yaml file:
+```yaml
+  # -------------------------
+  # Spark Worker
+  # -------------------------
+  spark-worker:
+    image: bitnamilegacy/spark:4.0.0
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=25
+      - SPARK_WORKER_MEMORY=10G
+    networks:
+      - streaming-net
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 10240M  
+          cpus: '25'
+```
 ---
 
 See full configuration: https://spark.apache.org/docs/latest/submitting-applications.html and general configurations: https://spark.apache.org/docs/latest/configuration.html. Also check possible configurations with:
@@ -414,7 +436,16 @@ Avg Input Rate / sec : 7495.93
 Avg Process / sec    : 51179.87
 
 so process is bigger than input -> it will keep up
+
+With NEW updated Config:
+Avg Input Rate: 399690.08	
+Process Rate: 120163.83
+
+
+So now the process is much slower and it will crash eventually!
 ```
+![process time](img/processTime.png)
+
 
 #### The Executors Tab
 In the The Executors Tab, check the **"Thread Dump"** and **"Task"** columns to verify resource utilization.
